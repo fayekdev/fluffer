@@ -20,17 +20,17 @@ const butlerIntros = [
 
 // Completely offline database of highly exaggerated tech satire headlines
 const satiricalHeadlines = [
-  { title: "Apple Announces New 'Apple Glass' Subscription Plan Charging $4.99 Per Blink", link: "https://thehardtimes.net" },
-  { title: "AI Startup Launches App That Converts Venture Capital Directly Into Carbon Dioxide", link: "https://thehardtimes.net" },
-  { title: "Linus Torvalds Deletes Linux Kernel Following Minor Typo Argument on Mailing List", link: "https://thehardtimes.net" },
-  { title: "Mark Zuckerberg Updates Terms of Service to Claim Legal Ownership Over Your Childhood Memories", link: "https://thehardtimes.net" },
-  { title: "New Gaming Mouse Features Injected Caffeine Port Directly Into User's Palm", link: "https://thehardtimes.net" },
-  { title: "Data Center Cooling System Swapped with Liquid Mountain Dew Following Budget Cuts", link: "https://thehardtimes.net" },
-  { title: "Software Engineer Successfully Automates Own Job, Spends Next 4 Years Playing Old School RuneScape", link: "https://thehardtimes.net" },
-  { title: "Cryptocurrency Startup Pivots to Simply Asking Passersby If They Have Any Spare Quarters", link: "https://thehardtimes.net" },
-  { title: "Microsoft Windows Update Installs Windows 12 Without Permission, Uninstalls User's Linoleum Floor", link: "https://thehardtimes.net" },
-  { title: "GitHub Copilot Refuses to Auto-Complete Code Until Developer Says 'Please'", link: "https://thehardtimes.net" },
-  { title: "Local Tech Bro Unironically Refers to Hot Pocket Machine Optimization as 'The Stack'", link: "https://thehardtimes.net" }
+  { title: "Apple Announces New 'Apple Glass' Subscription Plan Charging $4.99 Per Blink", },
+  { title: "AI Startup Launches App That Converts Venture Capital Directly Into Carbon Dioxide", },
+  { title: "Linus Torvalds Deletes Linux Kernel Following Minor Typo Argument on Mailing List", },
+  { title: "Mark Zuckerberg Updates Terms of Service to Claim Legal Ownership Over Your Childhood Memories", },
+  { title: "New Gaming Mouse Features Injected Caffeine Port Directly Into User's Palm", },
+  { title: "Data Center Cooling System Swapped with Liquid Mountain Dew Following Budget Cuts", },
+  { title: "Software Engineer Successfully Automates Own Job, Spends Next 4 Years Playing Old School RuneScape", },
+  { title: "Cryptocurrency Startup Pivots to Simply Asking Passersby If They Have Any Spare Quarters", },
+  { title: "Microsoft Windows Update Installs Windows 12 Without Permission, Uninstalls User's Linoleum Floor", },
+  { title: "GitHub Copilot Refuses to Auto-Complete Code Until Developer Says 'Please'", },
+  { title: "Local Tech Bro Unironically Refers to Hot Pocket Machine Optimization as 'The Stack'", }
 ];
 
 // Local execution block to handle the butler persona formatting
