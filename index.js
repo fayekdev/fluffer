@@ -1,16 +1,16 @@
 const { App } = require('@slack/bolt');
-const Parser = require('rss-parser');
 require('dotenv').config();
 
-// Initialize the Bolt App using Socket Mode as per the Hack Club guide
+// Initialize the Bolt App using Socket Mode as configured in your Hack Club deployment
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
+  signingSecret: process.env.SLACK_SIGNING_SECRET,
   socketMode: true,
   appToken: process.env.SLACK_APP_TOKEN
 });
 
-const parser = new Parser();
-const SATIRE_FEED_URL = 'https://thehardtimes.net';
+// Using an automated public proxy gateway to ensure stable delivery past Cloudflare
+const SATIRE_FEED_URL = 'https://rss2json.com';
 
 // Collection of distinguished butler openings
 const butlerIntros = [
@@ -20,16 +20,24 @@ const butlerIntros = [
   "I have ironed the morning papers for you. This particular tech headline caught my eye, quite dreadful really..."
 ];
 
-// Helper function to fetch and format the satirical message
+// Helper function to fetch and safely parse the satirical news
 async function fetchButlerNews() {
   try {
-    const feed = await parser.parseURL(SATIRE_FEED_URL);
-    if (!feed.items || feed.items.length === 0) {
-      return "Deepest apologies, but the morning news delivery seems to have been delayed.";
+    // Node.js native fetch handles the API gateway cleanly
+    const response = await fetch(SATIRE_FEED_URL);
+    
+    if (!response.ok) {
+      throw new Error(`Gateway returned HTTP status ${response.status}`);
     }
 
-    // Pull the latest fake tech headline
-    const latestNews = feed.items[0];
+    const data = await response.json();
+    
+    if (!data.items || data.items.length === 0) {
+      return "Deepest apologies, but the morning news delivery seems to have been delayed, Sir.";
+    }
+
+    // Pull the latest fake tech headline from the JSON dataset array
+    const latestNews = data.items[0];
     const title = latestNews.title;
     const link = latestNews.link;
     
@@ -37,24 +45,33 @@ async function fetchButlerNews() {
 
     return `*${randomIntro}*\n\n> *"${title}"*\n\nShould you wish to review the full, absurd chronicle, you may find it here: ${link}\n\nI shall return to polishing the silver.`;
   } catch (error) {
-    return "Regrettably, I encountered a severe disturbance while retrieving the daily gazette, Sir.";
+    console.error("[Butler Error Log]:", error.message);
+    return `Regrettably, I encountered a severe disturbance while retrieving the daily gazette, Sir. (Reason: ${error.message})`;
   }
 }
 
-// Prefix commands with your bot name 'fluffer' to avoid collision on Hack Club Slack
+// Prefix command structure matching your 'fluffer' app configuration setup
 app.command('/fluffer-news', async ({ command, ack, say }) => {
   await ack();
-  const message = await fetchButlerNews();
-  await say({ text: message, mrkdwn: true });
-});
-
-// Also respond when the butler is mentioned directly
-app.event('app_mention', async ({ event, say }) => {
-  if (event.text.toLowerCase().includes('news')) {
+  try {
     const message = await fetchButlerNews();
     await say({ text: message, mrkdwn: true });
-  } else {
-    await say("Yes, Sir? How may I be of service to the channel today?");
+  } catch (err) {
+    console.error("[Slash Command Failure]:", err.message);
+  }
+});
+
+// Fallback direct mention configuration handling channel pings
+app.event('app_mention', async ({ event, say }) => {
+  try {
+    if (event.text.toLowerCase().includes('news')) {
+      const message = await fetchButlerNews();
+      await say({ text: message, mrkdwn: true });
+    } else {
+      await say("Yes, Sir? How may I be of service to the channel today?");
+    }
+  } catch (err) {
+    console.error("[Mention Event Failure]:", err.message);
   }
 });
 
