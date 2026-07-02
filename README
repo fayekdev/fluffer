@@ -1,0 +1,85 @@
+# Fluffer the Butler
+
+An automated Slack bot built using the Hack Club tutorial framework and optimized to run seamlessly as a continuous background daemon service. Fluffer acts as an old, highly distinguished, and sarcastic British butler who delivers completely exaggerated, fake, and satirical tech news directly to your workspace channels.
+
+---
+
+## Key Features
+
+* **The Old Butler Persona**: All news, alerts, and interactions are wrapped in custom butler formatting, phrases, and aristocratic greetings.
+* **100% Reliable Tech Satire**: Features an internal database of highly exaggerated tech headlines to completely bypass strict external web scraping firewalls.
+* **Multi-Interaction Model**: Responsive to direct Slack Slash commands (/fluffer-news) as well as direct @fluffer mentions.
+* **Systemd Daemon Stability**: Fully optimized to automatically recover, keep running on system boot, and output telemetry logs cleanly via journalctl.
+
+---
+
+## Requirements and Environment Variables
+
+The application requires Node.js (v18+) and standard Slack Bot Socket Mode configuration. To get started, configure a .env file in the root directory:
+
+```env
+SLACK_BOT_TOKEN=xoxb-your-slack-bot-token
+SLACK_SIGNING_SECRET=your-slack-signing-secret
+SLACK_APP_TOKEN=xapp-your-slack-app-token
+```
+
+---
+
+## How to Deploy Globally on a Server
+
+Follow these exact steps to link, load, and activate the background daemon on your host terminal:
+
+### 1. Update Workspace Dependencies
+Ensure the project packages are fully resolved:
+```bash
+npm install
+```
+
+### 2. Configure the Systemd Unit File
+Create a global service mapping file at /etc/systemd/system/slackbot.service:
+
+```ini
+[Unit]
+Description=Slack Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/fluffer
+ExecStart=/usr/bin/node index.js
+Restart=always
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### 3. Load and Launch the Process Instance
+Execute these system commands to cache the profile configuration and fire up the engine:
+
+```bash
+# Reload systemd configuration cache files
+systemctl daemon-reload
+
+# Enable the bot to run continuously on host reboot and start it now
+systemctl enable --now slackbot.service
+
+# Restart the application sequence to load any active repository updates
+systemctl restart slackbot.service
+```
+
+### 4. Monitor Application Telemetry
+To read the live startup messages or debug incoming commands in real-time, stream the unit logs:
+```bash
+journalctl -u slackbot.service -f -n 50
+```
+
+---
+
+## Usage Examples Inside Slack
+
+Make sure to invite the bot to your target channel first using /invite @fluffer.
+
+* **Slash Command**: Type /fluffer-news in chat to see your butler iron out the morning tech papers.
+* **App Mention**: Ping @fluffer give me the latest news to fetch a random piece of technology gossip.
