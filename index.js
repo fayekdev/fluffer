@@ -1,7 +1,7 @@
 const { App } = require('@slack/bolt');
+const ollama = require('ollama').default; // Official Ollama Node library
 require('dotenv').config();
 
-// Initialize the Bolt App via Socket Mode using your Hack Club credentials
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
   signingSecret: process.env.SLACK_SIGNING_SECRET,
@@ -9,63 +9,122 @@ const app = new App({
   appToken: process.env.SLACK_APP_TOKEN
 });
 
-// Distinguished butler greetings and intros
-const butlerIntros = [
-  "Pardon the interruption, Mum/Sir, but a rather alarming development has surfaced in the tech quarters...",
-  "If I may trouble you for a brief moment, my lords, some quite preposterous technology news has arrived...",
-  "Forgive my intrusion, but the wireless telegraph is buzzing with this latest piece of electronic gossip...",
-  "I have ironed the morning papers for you. This particular tech headline caught my eye, quite dreadful really...",
-  "Forgive me, Sir, but it appears the engineers have lost their minds once again..."
-];
+// Master Persona System Prompt to ensure consistency across all commands
+const BUTLER_SYSTEM_PROMPT = `
+You are Fluffer, a highly distinguished, ultra-formal, traditional British butler serving elite tech lords. 
+You speak with absolute eloquence, vocabulary choice, and dry wit. Use terms like "Sir", "Mum", "My Lords", "Regrettably", and "Splendid". 
+Your tone must ALWAYS be that of a butler polishing silver, ironed morning papers, and serving tea, regardless of what the user asks.
+Keep responses concise, formatted cleanly for Slack markdown, and completely in character.
+`;
 
-// Completely offline database of highly exaggerated tech satire headlines
-const satiricalHeadlines = [
-  { title: "Apple Announces New 'Apple Glass' Subscription Plan Charging $4.99 Per Blink", },
-  { title: "AI Startup Launches App That Converts Venture Capital Directly Into Carbon Dioxide", },
-  { title: "Linus Torvalds Deletes Linux Kernel Following Minor Typo Argument on Mailing List", },
-  { title: "Mark Zuckerberg Updates Terms of Service to Claim Legal Ownership Over Your Childhood Memories", },
-  { title: "New Gaming Mouse Features Injected Caffeine Port Directly Into User's Palm", },
-  { title: "Data Center Cooling System Swapped with Liquid Mountain Dew Following Budget Cuts", },
-  { title: "Software Engineer Successfully Automates Own Job, Spends Next 4 Years Playing Old School RuneScape", },
-  { title: "Cryptocurrency Startup Pivots to Simply Asking Passersby If They Have Any Spare Quarters", },
-  { title: "Microsoft Windows Update Installs Windows 12 Without Permission, Uninstalls User's Linoleum Floor", },
-  { title: "GitHub Copilot Refuses to Auto-Complete Code Until Developer Says 'Please'", },
-  { title: "Local Tech Bro Unironically Refers to Hot Pocket Machine Optimization as 'The Stack'", }
-];
-
-// Local execution block to handle the butler persona formatting
-function generateButlerSatire() {
+/**
+ * Dynamic Helper: Query Ollama with the system persona
+ */
+async function queryButlerAI(userInstructions) {
   try {
-    const randomIntro = butlerIntros[Math.floor(Math.random() * butlerIntros.length)];
-    const randomNews = satiricalHeadlines[Math.floor(Math.random() * satiricalHeadlines.length)];
-
-    return `*${randomIntro}*\n\n> *"${randomNews.title}"*\n\nShould you wish to review the full, absurd chronicle, you may find it here: ${randomNews.link}\n\nI shall return to polishing the silver, Sir.`;
+    const response = await ollama.chat({
+      model: 'llama3', // Or your chosen model like 'mistral' or 'phi3'
+      messages: [
+        { role: 'system', content: BUTLER_SYSTEM_PROMPT },
+        { role: 'user', content: userInstructions }
+      ],
+      options: { temperature: 0.7 }
+    });
+    return response.message.content;
   } catch (error) {
-    console.error("[Butler Local Generation Error]:", error.message);
-    return "Regrettably, I encountered a disturbance while organizing the morning papers, Sir.";
+    console.error("[Ollama AI Generation Error]:", error);
+    return "Forgive me, Sir. It appears my neural synapses have suffered a temporary disruption while crafting my response.";
   }
 }
 
-// Slash command structure matching your 'fluffer' app configuration setup
+/**
+ * Dynamic Helper: Fetch Live Weather data via a free API
+ */
+async function getLiveWeather(city) {
+  try {
+    // Using wttr.in format to easily parse text parameters without API keys
+    const res = await fetch(`https://wttr.in{encodeURIComponent(city)}?format=%C+%t+with+winds+at+%w`);
+    if (!res.ok) throw new Error("Weather service unreachable");
+    return await res.text();
+  } catch (err) {
+    return "overcast and thoroughly uninviting, with a high chance of structural dampness";
+  }
+}
+
+/**
+ * Dynamic Helper: Fetch Live International Space Station Position
+ */
+async function getISSPosition() {
+  try {
+    const res = await fetch('http://open-notify.org');
+    const data = await res.json();
+    if (data.message === "success" && data.iss_position) {
+      return `Latitude: ${data.iss_position.latitude}, Longitude: ${data.iss_position.longitude}`;
+    }
+    throw new Error("Invalid payload structure");
+  } catch (err) {
+    return "unknown coordinates hidden entirely by atmospheric interference";
+  }
+}
+
+/* ==========================================================================
+   SLACK COMMAND HANDLERS
+   ========================================================================== */
+
+// 1. /fluffer-news: Generate fresh AI Satirical Tech Headlines
 app.command('/fluffer-news', async ({ command, ack, say }) => {
   await ack();
   try {
-    const message = generateButlerSatire();
+    const aiPrompt = "Generate one completely absurd, highly exaggerated, fictional technology headline. Followed by a witty, butler-style dry remark about it.";
+    const message = await queryButlerAI(aiPrompt);
     await say({ text: message, mrkdwn: true });
   } catch (err) {
     console.error("[Slash Command Failure]:", err.message);
   }
 });
 
-// Fallback direct mention configuration handling channel pings
+// 2. /fluffer-weather: Dynamic weather analysis matching the persona
+app.command('/fluffer-weather', async ({ command, ack, say }) => {
+  await ack();
+  try {
+    const targetCity = command.text.trim() || "London";
+    const liveRawData = await getLiveWeather(targetCity);
+    
+    const aiPrompt = `The current raw weather data for ${targetCity} is: "${liveRawData}". Take this raw string data and rephrase it into a proper, elegant morning weather report. Mention if an umbrella or proper footwear is required.`;
+    
+    const message = await queryButlerAI(aiPrompt);
+    await say({ text: message, mrkdwn: true });
+  } catch (err) {
+    console.error("[Weather Command Failure]:", err.message);
+  }
+});
+
+// 3. /fluffer-iss: Real-time dynamic overhead telemetry tracker
+app.command('/fluffer-iss', async ({ command, ack, say }) => {
+  await ack();
+  try {
+    const coords = await getISSPosition();
+    const aiPrompt = `The current geographical coordinates of the International Space Station are: ${coords}. Inform the master of this path overhead in a grand, celestial, but butler-appropriate way.`;
+    
+    const message = await queryButlerAI(aiPrompt);
+    await say({ text: message, mrkdwn: true });
+  } catch (err) {
+    console.error("[ISS Command Failure]:", err.message);
+  }
+});
+
+/* ==========================================================================
+   APP MENTION / FALLBACK CONVERSATION
+   ========================================================================== */
 app.event('app_mention', async ({ event, say }) => {
   try {
-    if (event.text.toLowerCase().includes('news')) {
-      const message = generateButlerSatire();
-      await say({ text: message, mrkdwn: true });
-    } else {
-      await say("Yes, Sir? How may I be of service to the channel today?");
-    }
+    // Strip out the bot's user tag out of the query string text
+    const cleanInput = event.text.replace(/<@.*?>/g, '').trim();
+    
+    const aiPrompt = `The user has addressed you directly in the parlor channel with the statement: "${cleanInput}". Respond to them directly in your impeccable butler tone.`;
+    
+    const message = await queryButlerAI(aiPrompt);
+    await say({ text: message, mrkdwn: true });
   } catch (err) {
     console.error("[Mention Event Failure]:", err.message);
   }
@@ -73,5 +132,5 @@ app.event('app_mention', async ({ event, say }) => {
 
 (async () => {
   await app.start();
-  console.log('⚡️ Fluffer the Butler bot is online and serving local news!');
+  console.log('⚡️ Fluffer the AI Butler bot is online and running locally via Ollama!');
 })();
