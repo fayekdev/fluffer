@@ -5,11 +5,9 @@ const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
   signingSecret: process.env.SLACK_SIGNING_SECRET,
   socketMode: true,
-  appToken: process.env.SLACK_APP_TOKEN,
-  aiToken: process.env.HACKCLUB_API_KEY
+  appToken: process.env.SLACK_APP_TOKEN
 });
 
-// Fixed Master Butler System Prompt
 const BUTLER_SYSTEM_PROMPT = `
 You are Fluffer, a highly distinguished, ultra-formal, traditional British butler serving elite tech lords. 
 You speak with absolute eloquence, complex vocabulary, and dry wit. Use terms like "Sir", "Mum", "My Lords", "Regrettably", and "Splendid". 
@@ -21,16 +19,17 @@ Keep responses concise, formatted cleanly for Slack markdown, and completely in 
 async function queryButlerAI(userInstructions) {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000); // 4000ms max execution time
+    const timeoutId = setTimeout(() => controller.abort(), 12000); // 12000ms max execution time
 
     const response = await fetch('https://hackclub.com', {
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer ${process.env.HACKCLUB_AI_TOKEN}',
-        'Content-Type': 'application/json'
+        'Authorization': `Bearer ${process.env.HACKCLUB_AI_TOKEN}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
       },
       body: JSON.stringify({
-        model: 'x-ai/grok-4.5',
+        model: 'qwen/qwen3-32b',
         messages: [
           { role: 'system', content: BUTLER_SYSTEM_PROMPT },
           { role: 'user', content: userInstructions }
@@ -43,11 +42,19 @@ async function queryButlerAI(userInstructions) {
     clearTimeout(timeoutId);
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Proxy Connection Error] Status: ${response.status}. Server Output: ${errorText.substring(0, 200)}`);
       throw new Error(`Proxy responded with status ${response.status}`);
     }
 
     const data = await response.json();
-    return data.choices[0].message.content;
+    
+    // Crucial check: Index choices[0] array to access token streams safely
+    if (data.choices && data.choices[0] && data.choices[0].message) {
+      return data.choices[0].message.content;
+    }
+    
+    throw new Error("Unexpected payload structure from proxy endpoint");
 
   } catch (error) {
     console.error("[Hack Club Proxy AI Generation Error]:", error.message);
@@ -55,12 +62,8 @@ async function queryButlerAI(userInstructions) {
   }
 }
 
-/**
- * Weather Helper with HTML Response Protection
- */
 async function getLiveWeather(city) {
   try {
-    // Fixed string interpolation typo here: `https://wttr.in{encodeURIComponent(city)}...`
     const res = await fetch(`https://wttr.in{encodeURIComponent(city)}?format=%C+%t+with+winds+at+%w`);
     const contentType = res.headers.get("content-type");
     if (!res.ok || (contentType && contentType.includes("text/html"))) {
@@ -74,26 +77,20 @@ async function getLiveWeather(city) {
 }
 
 /**
- * ISS Telemetry Helper with HTML Response Protection
+ * ISS Telemetry Helper using the high-uptime 'wheretheiss.at' endpoint
  */
 async function getISSPosition() {
   try {
-    // Swapped out open-notify for a modern, secure, high-availability telemetry tracker
     const res = await fetch('https://wheretheiss.at');
-    
     const contentType = res.headers.get("content-type");
     if (!res.ok || (contentType && contentType.includes("text/html"))) {
       throw new Error(`API returned an unexpected response profile: Status ${res.status}`);
     }
-    
     const data = await res.json();
-    
-    // Parse the properties returned directly from the satellite array structure
     if (data.latitude && data.longitude) {
       return `Latitude: ${data.latitude.toFixed(4)}, Longitude: ${data.longitude.toFixed(4)}`;
     }
-    
-    throw new Error("Invalid payload object structure");
+    throw new Error("Invalid payload structure from coordinate telemetry");
   } catch (err) {
     console.error("[ISS Fetch Fail]:", err.message);
     return "unknown coordinates hidden entirely by atmospheric interference";
@@ -101,7 +98,7 @@ async function getISSPosition() {
 }
 
 /* ==========================================================================
-   SLACK COMMANDS
+   SLACK COMMANDS & EVENTS
    ========================================================================== */
 
 // 1. /fluffer-news
