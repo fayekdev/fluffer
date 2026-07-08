@@ -78,16 +78,22 @@ async function getLiveWeather(city) {
  */
 async function getISSPosition() {
   try {
-    const res = await fetch('http://open-notify.org/iss-now.json');
+    // Swapped out open-notify for a modern, secure, high-availability telemetry tracker
+    const res = await fetch('https://wheretheiss.at');
+    
     const contentType = res.headers.get("content-type");
     if (!res.ok || (contentType && contentType.includes("text/html"))) {
-      throw new Error("API returned raw HTML code instead of json telemetry");
+      throw new Error(`API returned an unexpected response profile: Status ${res.status}`);
     }
+    
     const data = await res.json();
-    if (data.message === "success" && data.iss_position) {
-      return `Latitude: ${data.iss_position.latitude}, Longitude: ${data.iss_position.longitude}`;
+    
+    // Parse the properties returned directly from the satellite array structure
+    if (data.latitude && data.longitude) {
+      return `Latitude: ${data.latitude.toFixed(4)}, Longitude: ${data.longitude.toFixed(4)}`;
     }
-    throw new Error("Invalid payload structure");
+    
+    throw new Error("Invalid payload object structure");
   } catch (err) {
     console.error("[ISS Fetch Fail]:", err.message);
     return "unknown coordinates hidden entirely by atmospheric interference";
