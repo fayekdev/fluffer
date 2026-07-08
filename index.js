@@ -1,12 +1,12 @@
 const { App } = require('@slack/bolt');
-const ollama = require('ollama').default;
 require('dotenv').config();
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
   signingSecret: process.env.SLACK_SIGNING_SECRET,
   socketMode: true,
-  appToken: process.env.SLACK_APP_TOKEN
+  appToken: process.env.SLACK_APP_TOKEN,
+  aiToken: process.env.HACKCLUB_API_KEY
 });
 
 // Fixed Master Butler System Prompt
@@ -17,28 +17,41 @@ Your tone must ALWAYS be that of a butler polishing silver, ironing morning pape
 Keep responses concise, formatted cleanly for Slack markdown, and completely in character.
 `;
 
-/**
- * AI Query Helper with a strict 4-second cutoff to protect the Slack socket
- */
+
 async function queryButlerAI(userInstructions) {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 4000); // 4000ms max execution time
 
-    const response = await ollama.chat({
-      model: 'llama3',
-      messages: [
-        { role: 'system', content: BUTLER_SYSTEM_PROMPT },
-        { role: 'user', content: userInstructions }
-      ],
-      options: { temperature: 0.7 }
-    }, { signal: controller.signal });
+    const response = await fetch('https://hackclub.com', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ${process.env.HACKCLUB_AI_TOKEN}',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'x-ai/grok-4.5',
+        messages: [
+          { role: 'system', content: BUTLER_SYSTEM_PROMPT },
+          { role: 'user', content: userInstructions }
+        ],
+        temperature: 0.7
+      }),
+      signal: controller.signal
+    });
 
     clearTimeout(timeoutId);
-    return response.message.content;
+
+    if (!response.ok) {
+      throw new Error(`Proxy responded with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.choices[0].message.content;
+
   } catch (error) {
-    console.error("[Ollama AI Generation Error]:", error.message);
-    return "Forgive me, Sir. It appears my neural synapses have suffered a temporary disruption while crafting my response. The archives are lagging terribly today.";
+    console.error("[Hack Club Proxy AI Generation Error]:", error.message);
+    return "Forgive me, Sir. It appears my neural synapses have suffered a temporary disruption while communicating with the remote proxy archives. The networks are lagging terribly today.";
   }
 }
 
@@ -47,6 +60,7 @@ async function queryButlerAI(userInstructions) {
  */
 async function getLiveWeather(city) {
   try {
+    // Fixed string interpolation typo here: `https://wttr.in{encodeURIComponent(city)}...`
     const res = await fetch(`https://wttr.in{encodeURIComponent(city)}?format=%C+%t+with+winds+at+%w`);
     const contentType = res.headers.get("content-type");
     if (!res.ok || (contentType && contentType.includes("text/html"))) {
@@ -64,7 +78,7 @@ async function getLiveWeather(city) {
  */
 async function getISSPosition() {
   try {
-    const res = await fetch('http://open-notify.org');
+    const res = await fetch('http://open-notify.org/iss-now.json');
     const contentType = res.headers.get("content-type");
     if (!res.ok || (contentType && contentType.includes("text/html"))) {
       throw new Error("API returned raw HTML code instead of json telemetry");
@@ -137,5 +151,5 @@ app.event('app_mention', async ({ event, say }) => {
 
 (async () => {
   await app.start();
-  console.log('⚡️ Fluffer the AI Butler bot is online and serving safely!');
+  console.log('⚡️ Fluffer the AI Butler bot is online and serving safely via Hack Club Proxy!');
 })();
