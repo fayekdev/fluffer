@@ -1,11 +1,29 @@
-const { App } = require('@slack/bolt');
-require('dotenv').config();
+import pkg from '@slack/bolt';
+const { App } = pkg;
+import { OpenRouter } from '@openrouter/sdk';
+import 'dotenv/config';
+
+// 1. Initialize Slack App (Switched to HTTP Receiver to bypass local network blocks)
+const slackToken = process.env.SLACK_BOT_TOKEN;
+const slackSigningSecret = process.env.SLACK_SIGNING_SECRET;
+const slackAppToken = process.env.SLACK_APP_TOKEN; // for Socket Mode
+
+if (!slackSigningSecret && !slackAppToken) {
+  console.error('Missing Slack configuration. Set SLACK_SIGNING_SECRET or SLACK_APP_TOKEN.');
+  process.exit(1);
+}
 
 const app = new App({
-  token: process.env.SLACK_BOT_TOKEN,
-  signingSecret: process.env.SLACK_SIGNING_SECRET,
-  socketMode: true,
-  appToken: process.env.SLACK_APP_TOKEN
+  token: slackToken,
+  signingSecret: slackSigningSecret || undefined,
+  appToken: slackAppToken || undefined,
+  socketMode: Boolean(slackAppToken),
+});
+
+// 2. Initialize the OpenRouter SDK Client pointed to Hack Club's Proxy
+const aiClient = new OpenRouter({
+  apiKey: process.env.HACKCLUB_API_KEY,
+  serverURL: "https://ai.hackclub.com/proxy/v1",
 });
 
 const BUTLER_SYSTEM_PROMPT = `
@@ -15,56 +33,47 @@ Your tone must ALWAYS be that of a butler polishing silver, ironing morning pape
 Keep responses concise, formatted cleanly for Slack markdown, and completely in character.
 `;
 
-
+/**
+ * Executes AI generation requests via the implemented OpenRouter SDK configuration
+ */
 async function queryButlerAI(userInstructions) {
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000); // 12000ms max execution time
-
-    const response = await fetch('https://hackclub.com', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.HACKCLUB_AI_TOKEN}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'qwen/qwen3-32b',
+    const response = await aiClient.chat.send({
+      chatRequest: {
+        model: "qwen/qwen3-32b",
         messages: [
-          { role: 'system', content: BUTLER_SYSTEM_PROMPT },
-          { role: 'user', content: userInstructions }
+          { role: "system", content: BUTLER_SYSTEM_PROMPT },
+          { role: "user", content: userInstructions }
         ],
+        stream: false,
         temperature: 0.7
-      }),
-      signal: controller.signal
+      }
     });
 
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[Proxy Connection Error] Status: ${response.status}. Server Output: ${errorText.substring(0, 200)}`);
-      throw new Error(`Proxy responded with status ${response.status}`);
-    }
-
-    const data = await response.json();
-    
-    // Crucial check: Index choices[0] array to access token streams safely
-    if (data.choices && data.choices[0] && data.choices[0].message) {
-      return data.choices[0].message.content;
+    // Safely verify and extract data using the OpenRouter flattened choices schema
+    // response.choices is commonly an array; handle multiple possible shapes
+    if (response && response.choices) {
+      // choice could be array with .message.content
+      const first = Array.isArray(response.choices) ? response.choices[0] : response.choices;
+      if (first && first.message && first.message.content) return first.message.content;
+      // fallback: some SDKs return an "output" or flattened fields
+      if (response.output?.[0]?.content) return response.output[0].content;
     }
     
-    throw new Error("Unexpected payload structure from proxy endpoint");
+    throw new Error("Unexpected payload structure returned from the SDK schema model");
 
   } catch (error) {
-    console.error("[Hack Club Proxy AI Generation Error]:", error.message);
+    console.error("[OpenRouter SDK AI Generation Error]:", error.message);
     return "Forgive me, Sir. It appears my neural synapses have suffered a temporary disruption while communicating with the remote proxy archives. The networks are lagging terribly today.";
   }
 }
 
+/**
+ * Weather Engine using raw wttr.in payload streams
+ */
 async function getLiveWeather(city) {
   try {
-    const res = await fetch(`https://wttr.in{encodeURIComponent(city)}?format=%C+%t+with+winds+at+%w`);
+    const res = await fetch(`https://wttr.in/${encodeURIComponent(city)}?format=%C+%t+with+winds+at+%w`);
     const contentType = res.headers.get("content-type");
     if (!res.ok || (contentType && contentType.includes("text/html"))) {
       throw new Error("API returned raw HTML code instead of weather parameters");
@@ -77,18 +86,18 @@ async function getLiveWeather(city) {
 }
 
 /**
- * ISS Telemetry Helper using the high-uptime 'wheretheiss.at' endpoint
+ * ISS Telemetry Helper using the high-uptime 'wheretheiss.at' JSON endpoint
  */
 async function getISSPosition() {
   try {
-    const res = await fetch('https://wheretheiss.at');
+    const res = await fetch('https://api.wheretheiss.at/satellites/25544');
     const contentType = res.headers.get("content-type");
     if (!res.ok || (contentType && contentType.includes("text/html"))) {
       throw new Error(`API returned an unexpected response profile: Status ${res.status}`);
     }
     const data = await res.json();
     if (data.latitude && data.longitude) {
-      return `Latitude: ${data.latitude.toFixed(4)}, Longitude: ${data.longitude.toFixed(4)}`;
+      return `Latitude: ${data.latitude.toFixed(4)}°, Longitude: ${data.longitude.toFixed(4)}°, Altitude: ${parseFloat(data.altitude).toFixed(2)} km, Velocity: ${parseFloat(data.velocity).toFixed(2)} km/h`;
     }
     throw new Error("Invalid payload structure from coordinate telemetry");
   } catch (err) {
@@ -132,7 +141,7 @@ app.command('/fluffer-iss', async ({ command, ack, say }) => {
   await ack();
   try {
     const coords = await getISSPosition();
-    const aiPrompt = `The current geographical coordinates of the International Space Station are: ${coords}. Inform the master of this celestial path overhead in a grand, but butler-appropriate way.`;
+    const aiPrompt = `The current geographical coordinates and telemetry metrics of the International Space Station are: ${coords}. Inform the master of this celestial path overhead in a grand, but butler-appropriate way. Mention its staggering velocity.`;
     const message = await queryButlerAI(aiPrompt);
     await say({ text: message, mrkdwn: true });
   } catch (err) {
@@ -152,7 +161,9 @@ app.event('app_mention', async ({ event, say }) => {
   }
 });
 
+// Start the HTTP server on Port 3000 (standard for cloud host event routing)
 (async () => {
-  await app.start();
-  console.log('⚡️ Fluffer the AI Butler bot is online and serving safely via Hack Club Proxy!');
+  const port = process.env.PORT || 3000;
+  await app.start(port);
+  console.log(`Fluffer the AI Butler is online! Listening on web server port ${port}`);
 })();
